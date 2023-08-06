@@ -383,6 +383,7 @@ to_show = define_deterministic(locals(), [
   'total_charity_cost',
   'total_cost',
   'total_consumption_doublings',
+  'total_non_charity_cost',
   'total_DALYs'])
 
 def samples_path(n_samples: int) -> str:
@@ -404,6 +405,8 @@ def run(n_samples = 100000):
     plot_dists(samples, to_show)
     import matplotlib.pyplot as plt
     plt.show()
+
+
 
 if __name__=="__main__":
     run()
