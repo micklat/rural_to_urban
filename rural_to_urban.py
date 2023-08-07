@@ -160,18 +160,10 @@ def charity_cost_in_year(year):
         else 0)
     variable_costs = total_variable_charity_costs * yearly_scale_of_charity_ops[year] 
     return overhead + variable_costs
-    
+
 yearly_charity_cost = {
     year: charity_cost_in_year(year) for year in years
     }
-ycc1 = yearly_charity_cost[1]
-ycc2 = yearly_charity_cost[2]
-ycc3 = yearly_charity_cost[3]
-ycc4 = yearly_charity_cost[4]
-ycc5 = yearly_charity_cost[5]
-ycc6 = yearly_charity_cost[6]
-ysoco6 = yearly_scale_of_charity_ops[6]
-ysocois6 = yearly_scale_of_charity_ops_if_successful[6]
 
 yearly_non_charity_cost = {
     year: total_non_charity_costs * yearly_scale_of_charity_ops[year]
