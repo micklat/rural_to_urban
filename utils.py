@@ -51,6 +51,7 @@ def calc_cost_effectiveness(samples):
             "total$/doubling": cost_effectiveness(total_cost, effect_in_doubling_consumption),
             "total$/DALY": cost_effectiveness(total_cost, effect_in_DALYs),
     }
+    pymc_results = {}
     for ratio_name, values in dists.items():
         squiggle_vals = squiggle_results[ratio_name.lower()]
         for statistic in squiggle_vals.index.values:
@@ -58,8 +59,19 @@ def calc_cost_effectiveness(samples):
                 f_statistic = lambda arr: np.quantile(arr, float(statistic[:-1])/100)
             else:
                 f_statistic = {"mean": np.mean, "stdev": np.std}[statistic]
-            print(ratio_name, statistic, squiggle_vals[statistic], f_statistic(values))
+            stat_val = f_statistic(values)
+            print(ratio_name, statistic, squiggle_vals[statistic], stat_val)
+            pymc_results.setdefault(ratio_name, {})[statistic] = stat_val
+    return pymc_results
 
 
-    
+def compare_quantiles(pymc_results):
+    import pylab
+    for i, name in enumerate(pymc_results.keys()):
+        pylab.subplot(2,2,i+1)
+        pylab.title(name)
+        pylab.scatter(squiggle_results[name.lower()].values, list(pymc_results[name].values()))
+        pylab.xlabel("squiggle")
+        pylab.ylabel("pymc")
+    pylab.show()
 

@@ -5,10 +5,12 @@
 
 from importlib import reload
 import sys
-sys.path.extend([
+for repo_dir in [
     "/home/michael/Documents/programming/packages/nbag", 
     "/home/michael/Documents/programming/packages/nba_pymc",
-    "/home/michael/Documents/programming/packages/credints"])
+    "/home/michael/Documents/programming/packages/credints"]:
+    if repo_dir not in sys.path:
+        sys.path.append(repo_dir)
 
 import nba_pymc 
 from nba_pymc import beta, Model
@@ -16,7 +18,6 @@ from nba_pymc.math import log, minimum
 from credints import EqualTailIntervals
 import numpy as np
 from typing import Mapping
-
 
 ci = EqualTailIntervals(nba_pymc)
 
@@ -68,11 +69,6 @@ discount_rate = beta(10 * 4, 10 * 96) #  epistemic uncertainty
 chance_change_happen_anyway = beta(12 * 1.5, 12 * 98.5)
 prob_of_success = beta(5 * 1, 5 * 1)
 consumption_doubling_to_DALY_ratio = 1/2.3 # DALYs per doubling of consumption
-num_years = 50 #for calculations involving npv 
-preperation_time = 1 #years - time needed before starting the intervention 
-cover_time = 4 #years - We assume that the charity would run the campaign in all target regions over the scope of 4 years, i.e. 25% of the regions in each year
-run_time_unsuccessful = 3 #years - How long charity runs if unsuccessful
-run_time_successful = 5 #years - How long charity program runs if successful
 
 years = np.arange(1, num_years+1)
 
@@ -147,12 +143,14 @@ total_non_charity_costs = (cost_to_government + cost_to_other_charities +
 yearly_scale_of_charity_ops_if_successful = {
     year: 0 if year==1 else 1/cover_time if year <= run_time_successful else 0
     for year in years}
-yearly_scale_of_charity_ops = {
-    year: ((percent_of_area_if_successful:=yearly_scale_of_charity_ops_if_successful[year]) 
-        if year <= run_time_successful 
-        else percent_of_area_if_successful * prob_of_success)
-    for year in years
-}
+
+def scale_of_charity_ops_in(year):
+    percent_of_area_if_successful = yearly_scale_of_charity_ops_if_successful[year] 
+    return (percent_of_area_if_successful 
+            if year <= run_time_unsuccessful 
+            else (percent_of_area_if_successful * prob_of_success))
+
+yearly_scale_of_charity_ops = {year: scale_of_charity_ops_in(year) for year in years}
 
 def charity_cost_in_year(year):
     overhead = (
@@ -166,6 +164,14 @@ def charity_cost_in_year(year):
 yearly_charity_cost = {
     year: charity_cost_in_year(year) for year in years
     }
+ycc1 = yearly_charity_cost[1]
+ycc2 = yearly_charity_cost[2]
+ycc3 = yearly_charity_cost[3]
+ycc4 = yearly_charity_cost[4]
+ycc5 = yearly_charity_cost[5]
+ycc6 = yearly_charity_cost[6]
+ysoco6 = yearly_scale_of_charity_ops[6]
+ysocois6 = yearly_scale_of_charity_ops_if_successful[6]
 
 yearly_non_charity_cost = {
     year: total_non_charity_costs * yearly_scale_of_charity_ops[year]
@@ -376,38 +382,64 @@ total_consumption_doublings = npv(discount_rate,
 total_DALYs = total_consumption_doublings * consumption_doubling_to_DALY_ratio
 total_cost = total_non_charity_cost + total_charity_cost
 
+
+#-------------------------------------------------------------------------------
+# plotting and debugging
+from pytensor.tensor import TensorVariable
+from dataclasses import dataclass
+from collections.abc import Sequence
+
+
 def define_deterministic(context, names):
     return {name: nba_pymc.deterministic(context[name], name=name) for name in names}
 
-to_show = define_deterministic(locals(), [
+
+def all_tensor_vars(context):
+    res = {}
+    for name, computation in context.items():
+        if not isinstance(computation, TensorVariable): continue
+        res[name] = computation
+    return res
+
+
+@dataclass
+class StorageMode:
+    vars_to_save: Sequence[str]
+    filename_prefix: str
+
+    def samples_path(self, n_samples: int) -> str:
+        return self.filename_prefix + f".{n_samples}.nc"
+
+
+save_all = StorageMode(all_tensor_vars(locals()).keys(), "rural_to_urban.all")
+selected_vars = [
   'total_charity_cost',
   'total_cost',
   'total_consumption_doublings',
   'total_non_charity_cost',
-  'total_DALYs'])
-
-def samples_path(n_samples: int) -> str:
-    return f"rural_to_urban.{n_samples}.nc"
-
-def plot_dists(samples, vars_to_show):
+  'total_DALYs']
+save_selective = StorageMode(selected_vars, "rural_to_urban")
+    
+def plot_dists(samples, var_names):
     import seaborn
-    for name in vars_to_show:
+    for name in var_names:
         print(name)
         seaborn.kdeplot(getattr(samples, name).values.ravel())
 
-def run(n_samples = 100000):
+def run(context, storage, n_samples):
+    dets = define_deterministic(
+            context, 
+            [name for name in storage.vars_to_save if not hasattr(m, name)])
     print("sampling...", end='')
-    samples = nba_pymc.sample_prior_predictive(samples=n_samples, var_names=list(to_show.keys())).prior
+    samples = nba_pymc.sample_prior_predictive(samples=n_samples, var_names=storage.vars_to_save).prior
     print(" done.")
 
-    samples.to_netcdf(samples_path(n_samples))
+    samples.to_netcdf(storage.samples_path(n_samples))
 
-    plot_dists(samples, to_show)
+    plot_dists(samples, selected_vars)
     import matplotlib.pyplot as plt
     plt.show()
 
-
-
 if __name__=="__main__":
-    run()
+    run(locals(), save_selective, 100000)
 
